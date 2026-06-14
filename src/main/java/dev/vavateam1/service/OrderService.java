@@ -1,0 +1,35 @@
+package dev.vavateam1.service;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+import dev.vavateam1.model.Category;
+import dev.vavateam1.model.MenuItem;
+import dev.vavateam1.model.OrderItem;
+import dev.vavateam1.model.OrderStatus;
+import dev.vavateam1.model.Table;
+import dev.vavateam1.dto.OrderItemDto;
+
+public interface OrderService {
+    List<Category> getCategories();
+
+    List<MenuItem> getMenuItems();
+
+    List<MenuItem> getMenuItemsIncludingDeleted();
+
+    List<OrderItem> getOrderItems(Table table);
+
+    OrderItem createOrderFromMenu(MenuItem menuItem, Table table);
+
+    MenuItem getItemByPluCode(String code);
+
+    void saveTempOrders(List<OrderItemDto> orderItemList);
+
+    void deleteOrderItem(int orderItemId);
+
+    void processPayment(List<OrderItem> ordersToProcess, int paymentMethod, BigDecimal totalPrice, BigDecimal tip);
+
+    List<OrderItemDto> buildOrderItemViews(List<OrderItem> orderItems, List<MenuItem> menuItems);
+
+    boolean canMergeOrderLine(MenuItem menuItem, OrderStatus currentStatus);
+}
