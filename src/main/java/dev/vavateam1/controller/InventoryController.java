@@ -1,0 +1,737 @@
+package dev.vavateam1.controller;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
+
+import com.google.inject.Inject;
+
+import dev.vavateam1.model.InventoryIngredient;
+import dev.vavateam1.model.InventoryItemStatus;
+import dev.vavateam1.service.InventoryService;
+import dev.vavateam1.util.I18n;
+import javafx.animation.FadeTransition;
+import javafx.animation.PauseTransition;
+import javafx.animation.SequentialTransition;
+import javafx.fxml.FXML;
+import javafx.geometry.HPos;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
+import javafx.stage.Window;
+import javafx.util.Duration;
+
+public class InventoryController {
+
+    private static final String HEADER_LABEL_STYLE = "-fx-font-size:14; -fx-text-fill:-app-text; -fx-font-weight:bold; -fx-cursor:hand;";
+    private static final String ROW_LABEL_STYLE = "-fx-font-size:14; -fx-text-fill:-app-text;";
+    private static final String STATUS_STYLE_CRITICAL = "-fx-text-fill:-app-delete; -fx-font-size:20;";
+    private static final String STATUS_STYLE_LOW = "-fx-text-fill:-app-edit; -fx-font-size:20;";
+    private static final String STATUS_STYLE_OK = "-fx-text-fill:-app-add; -fx-font-size:20;";
+    private static final List<String> DEFAULT_COLUMN_ORDER = List.of(
+            "id", "name", "quantity", "minimal_quantity", "unit", "cost_per_unit", "status");
+    @FXML private StackPane rootStack;
+    @FXML private VBox root;
+    @FXML private Button allItemsButton;
+    @FXML private Button lowStockButton;
+    @FXML private Button criticalButton;
+    @FXML private Button editButton;
+    @FXML private Label itemIdHeaderLabel;
+    @FXML private Label nameHeaderLabel;
+    @FXML private Label quantityHeaderLabel;
+    @FXML private Label minimalQuantityHeaderLabel;
+    @FXML private Label statusHeaderLabel;
+    @FXML private TextField searchField;
+    @FXML private VBox filterPanel;
+    @FXML private TextField quantityFromField;
+    @FXML private TextField quantityToField;
+    @FXML private VBox itemsContainer;
+    @FXML private Label toastLabel;
+
+    private final InventoryService inventoryService;
+    private final List<InventoryIngredient> allItems = new ArrayList<>();
+
+    private CurrentFilter currentFilter = CurrentFilter.ALL;
+    private SortField activeSortField = SortField.ITEM_ID;
+    private boolean ascendingSort = true;
+    private Pattern activeSearchPattern;
+
+    private boolean editMode = false;
+    private BigDecimal quantityFrom;
+    private BigDecimal quantityTo;
+
+    @Inject
+    public InventoryController(InventoryService inventoryService) {
+        this.inventoryService = inventoryService;
+    }
+
+    @FXML
+    private void initialize() {
+        searchField.setOnAction(event -> onApplyFilter());
+        updateButtonStyles();
+        reloadInventory();
+    }
+
+    @FXML
+    private void onFilterAllItems() {
+        currentFilter = CurrentFilter.ALL;
+        updateButtonStyles();
+        renderItems();
+    }
+
+    @FXML
+    private void onFilterLowStock() {
+        currentFilter = CurrentFilter.LOW_STOCK;
+        updateButtonStyles();
+        renderItems();
+    }
+
+    @FXML
+    private void onFilterCritical() {
+        currentFilter = CurrentFilter.CRITICAL;
+        updateButtonStyles();
+        renderItems();
+    }
+
+    @FXML
+    private void onSortByItemId() {
+        toggleSort(SortField.ITEM_ID);
+    }
+
+    @FXML
+    private void onSortByName() {
+        toggleSort(SortField.NAME);
+    }
+
+    @FXML
+    private void onSortByQuantity() {
+        toggleSort(SortField.QUANTITY);
+    }
+
+    @FXML
+    private void onSortByMinimalQuantity() {
+        toggleSort(SortField.MINIMAL_QUANTITY);
+    }
+
+    @FXML
+    private void onSortByStatus() {
+        toggleSort(SortField.STATUS);
+    }
+
+    @FXML
+    private void onApplyFilter() {
+        activeSearchPattern = compilePattern(searchField.getText());
+        if (!updateQuantityRangeFilter()) {
+            return;
+        }
+        renderItems();
+    }
+
+    @FXML
+    private void onToggleFilterPanel() {
+        boolean shouldShow = !filterPanel.isVisible();
+        filterPanel.setVisible(shouldShow);
+        filterPanel.setManaged(shouldShow);
+    }
+
+    @FXML
+    private void onClearFilter() {
+        searchField.clear();
+        quantityFromField.clear();
+        quantityToField.clear();
+        activeSearchPattern = null;
+        quantityFrom = null;
+        quantityTo = null;
+        currentFilter = CurrentFilter.ALL;
+        updateButtonStyles();
+        renderItems();
+    }
+
+    @FXML
+    private void onImportInventory() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle(I18n.t("inventory.importTitle"));
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(I18n.t("file.type.xml"), "*.xml"));
+
+        Window window = itemsContainer.getScene() != null ? itemsContainer.getScene().getWindow() : null;
+        var selectedFile = fileChooser.showOpenDialog(window);
+        if (selectedFile == null) {
+            return;
+        }
+
+        try {
+            List<InventoryIngredient> importedIngredients = inventoryService.importFromXml(selectedFile.toPath());
+            inventoryService.saveAll(importedIngredients);
+            reloadInventory();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to import inventory", e);
+        }
+    }
+
+    @FXML
+    private void onExportInventory() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle(I18n.t("inventory.exportTitle"));
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(I18n.t("file.type.xml"), "*.xml"));
+        fileChooser.setInitialFileName("inventory-export.xml");
+
+        Window window = itemsContainer.getScene() != null ? itemsContainer.getScene().getWindow() : null;
+        var selectedFile = fileChooser.showSaveDialog(window);
+        if (selectedFile == null) {
+            return;
+        }
+
+        try {
+            inventoryService.exportToXml(selectedFile.toPath(), getFilteredItems());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to export inventory", e);
+        }
+    }
+
+    @FXML
+    private void toggleEditMode() {
+        editMode = !editMode;
+
+        editButton.setText(editMode ? I18n.t("inventory.editDone") : I18n.t("common.edit"));
+
+        if (editMode) {
+            root.setStyle("""
+                -fx-padding: 19;
+                -fx-background-color: -app-background;
+                -fx-border-color: -app-delete;
+                -fx-border-width: 2;
+            """);
+        }
+        else {
+            root.setStyle("""
+                -fx-padding: 20;
+                -fx-background-color: -app-background;
+                -fx-border-color: transparent;
+            """);
+        }
+
+        renderItems();
+    }
+
+    private void reloadInventory() {
+        allItems.clear();
+        allItems.addAll(inventoryService.getAll());
+        sortItems();
+        refreshSortHeaderLabels();
+        renderItems();
+    }
+
+    private void toggleSort(SortField selectedField) {
+        if (activeSortField == selectedField) {
+            ascendingSort = !ascendingSort;
+        } else {
+            activeSortField = selectedField;
+            ascendingSort = true;
+        }
+
+        sortItems();
+        refreshSortHeaderLabels();
+        renderItems();
+    }
+
+    private void sortItems() {
+        Comparator<InventoryIngredient> comparator = switch (activeSortField) {
+            case ITEM_ID -> Comparator.comparingInt(InventoryIngredient::getId);
+            case NAME -> Comparator.comparing(item -> item.getName().toLowerCase());
+            case QUANTITY -> Comparator.comparing(InventoryIngredient::getQuantity);
+            case MINIMAL_QUANTITY -> Comparator.comparing(InventoryIngredient::getMinimalQuantity);
+            case STATUS -> Comparator.comparing(item -> inventoryService.getStatus(item).name());
+        };
+
+        if (!ascendingSort) {
+            comparator = comparator.reversed();
+        }
+
+        allItems.sort(comparator);
+    }
+
+    private void refreshSortHeaderLabels() {
+        itemIdHeaderLabel.setText(buildHeaderText(I18n.t("inventory.itemId"), SortField.ITEM_ID));
+        nameHeaderLabel.setText(buildHeaderText(I18n.t("common.name"), SortField.NAME));
+        quantityHeaderLabel.setText(buildHeaderText(I18n.t("common.quantity"), SortField.QUANTITY));
+        minimalQuantityHeaderLabel.setText(buildHeaderText(I18n.t("inventory.minimalQuantity"), SortField.MINIMAL_QUANTITY));
+        statusHeaderLabel.setText(buildHeaderText(I18n.t("common.status"), SortField.STATUS));
+
+        itemIdHeaderLabel.setStyle(HEADER_LABEL_STYLE);
+        nameHeaderLabel.setStyle(HEADER_LABEL_STYLE);
+        quantityHeaderLabel.setStyle(HEADER_LABEL_STYLE);
+        minimalQuantityHeaderLabel.setStyle(HEADER_LABEL_STYLE);
+        statusHeaderLabel.setStyle(HEADER_LABEL_STYLE);
+    }
+
+    private String buildHeaderText(String baseText, SortField field) {
+        if (field != activeSortField) {
+            return baseText;
+        }
+
+        return baseText + (ascendingSort ? " ↑" : " ↓");
+    }
+
+    private void renderItems() {
+        itemsContainer.getChildren().clear();
+
+        if (editMode) {
+            itemsContainer.getChildren().add(createAddRow());
+        }
+
+        for (InventoryIngredient item : getFilteredItems()) {
+            itemsContainer.getChildren().add(createItemRow(item));
+        }
+    }
+
+    private List<InventoryIngredient> getFilteredItems() {
+        return allItems.stream()
+                .filter(this::matchesCurrentFilter)
+                .filter(this::matchesQuantityRange)
+                .filter(this::matchesSearch)
+                .toList();
+    }
+
+    private boolean matchesCurrentFilter(InventoryIngredient item) {
+        InventoryItemStatus status = inventoryService.getStatus(item);
+        return switch (currentFilter) {
+            case ALL -> true;
+            case LOW_STOCK -> status == InventoryItemStatus.LOW || status == InventoryItemStatus.CRITICAL;
+            case CRITICAL -> status == InventoryItemStatus.CRITICAL;
+        };
+    }
+
+    private boolean matchesQuantityRange(InventoryIngredient item) {
+        BigDecimal quantity = zeroIfNull(item.getQuantity());
+        if (quantityFrom != null && quantity.compareTo(quantityFrom) < 0) {
+            return false;
+        }
+        return quantityTo == null || quantity.compareTo(quantityTo) <= 0;
+    }
+
+    private boolean matchesSearch(InventoryIngredient item) {
+        if (activeSearchPattern == null) {
+            return true;
+        }
+
+        String searchable = item.getId() + " " + item.getName() + " " + formatDecimal(item.getQuantity()) + " "
+                + formatDecimal(item.getMinimalQuantity()) + " " + safeValue(item.getUnit()) + " "
+                + formatDecimal(item.getCostPerUnit()) + " " + inventoryService.getStatus(item).name();
+        return activeSearchPattern.matcher(searchable).find();
+    }
+
+    private void updateButtonStyles() {
+        String activeStyle = "-fx-background-color: -app-blue-primary; -fx-text-fill:-app-foreground; -fx-background-radius:20; -fx-padding:8 20 8 20; -fx-cursor:hand; -fx-font-size:14;";
+        String inactiveStyle = "-fx-background-color: -app-blue-secondary; -fx-text-fill:-app-text; -fx-background-radius:20; -fx-padding:8 20 8 20; -fx-cursor:hand; -fx-font-size:14;";
+
+        allItemsButton.setStyle(currentFilter == CurrentFilter.ALL ? activeStyle : inactiveStyle);
+        lowStockButton.setStyle(currentFilter == CurrentFilter.LOW_STOCK ? activeStyle : inactiveStyle);
+        criticalButton.setStyle(currentFilter == CurrentFilter.CRITICAL ? activeStyle : inactiveStyle);
+    }
+
+    private GridPane createItemRow(InventoryIngredient item) {
+        GridPane row = new GridPane();
+        row.setHgap(0);
+        row.getStyleClass().add(editMode ? "inv-row-edit" : "inv-row");
+
+        row.getColumnConstraints().addAll(
+                createColumnConstraint(18),
+                createColumnConstraint(22),
+                createColumnConstraint(14),
+                createColumnConstraint(18),
+                createColumnConstraint(18),
+                createColumnConstraint(10));
+
+        row.add(createRowLabel(String.valueOf(item.getId())), 0, 0);
+        row.add(createRowLabel(item.getName()), 1, 0);
+        row.add(createRowLabel(formatDecimal(item.getQuantity())), 2, 0);
+        row.add(createRowLabel(formatDecimal(item.getMinimalQuantity())), 3, 0);
+        row.add(createStatusIndicator(inventoryService.getStatus(item)), 4, 0);
+
+        if (editMode) {
+            Button deleteButton = new Button("✕");
+            deleteButton.setStyle("""
+                -fx-background-color: -app-delete;
+                -fx-text-fill: -app-foreground;
+                -fx-background-radius: 20;
+                -fx-cursor: hand;
+            """);
+
+            deleteButton.setOnAction(e -> confirmDelete(item));
+
+            row.add(deleteButton, 5, 0);
+        }
+
+        row.setOnMouseClicked(e -> {
+            if (editMode) {
+                editItem(item);
+            }
+        });
+
+        return row;
+    }
+
+    private void confirmDelete(InventoryIngredient item) {
+        Button yes = new Button(I18n.t("common.delete"));
+        Button no = new Button(I18n.t("common.cancel"));
+
+        yes.getStyleClass().add("dialog-button");
+        yes.setStyle("-fx-background-color: -app-delete");
+
+        no.getStyleClass().add("dialog-button");
+
+        yes.setMinWidth(40);
+        no.setMinWidth(40);
+
+        yes.setOnAction(e -> {
+            inventoryService.delete(item.getId());
+            rootStack.getChildren().removeLast();
+            reloadInventory();
+            showToast(I18n.t("inventory.itemDeleted"), true);
+        });
+
+        no.setOnAction(e -> {
+            rootStack.getChildren().removeLast();
+        });
+
+        showDialog(I18n.t("inventory.confirmDelete"), new Label(I18n.t("inventory.confirmDeleteMessage")), List.of(yes, no));
+    }
+
+    private void editItem(InventoryIngredient item) {
+        TextField nameField = new TextField(item.getName());
+        TextField quantityField = new TextField(item.getQuantity().toString());
+        TextField minQuantityField = new TextField(item.getMinimalQuantity().toString());
+
+        HBox content = new HBox(10,
+                new VBox(20,
+                        new Label(I18n.t("common.name")),
+                        new Label(I18n.t("common.quantity")),
+                        new Label(I18n.t("inventory.minimumQuantity"))),
+                new VBox(10,
+                        nameField,
+                        quantityField,
+                        minQuantityField));
+
+        Button save = new Button(I18n.t("common.save"));
+        Button cancel = new Button(I18n.t("common.cancel"));
+
+        save.setMinWidth(40);
+        cancel.setMinWidth(40);
+
+        save.getStyleClass().add("dialog-button");
+        cancel.getStyleClass().add("dialog-button");
+
+        save.setOnAction(e -> {
+            try {
+                item.setName(nameField.getText());
+                item.setQuantity(new BigDecimal(quantityField.getText()));
+                item.setMinimalQuantity(new BigDecimal(minQuantityField.getText()));
+
+                inventoryService.saveAll(allItems);
+
+                reloadInventory();
+
+                rootStack.getChildren().removeLast();
+
+                showToast(I18n.t("inventory.itemEdited"), true);
+            } catch (Exception ex) {
+                showToast(I18n.t("inventory.invalidFieldFormat"), false);
+                return;
+            }
+        });
+
+        cancel.setOnAction(e -> {
+            rootStack.getChildren().removeLast();
+        });
+
+        showDialog(I18n.t("inventory.editItem"), content, List.of(save, cancel));
+    }
+
+    private ColumnConstraints createColumnConstraint(double percentWidth) {
+        ColumnConstraints constraint = new ColumnConstraints();
+        constraint.setPercentWidth(percentWidth);
+        constraint.setHalignment(HPos.CENTER);
+        return constraint;
+    }
+
+    private Label createRowLabel(String text) {
+        Label label = new Label(text);
+        label.setStyle(ROW_LABEL_STYLE);
+        return label;
+    }
+
+    private Label createStatusIndicator(InventoryItemStatus status) {
+        String statusStyle = switch (status) {
+            case CRITICAL -> STATUS_STYLE_CRITICAL;
+            case LOW -> STATUS_STYLE_LOW;
+            case OK -> STATUS_STYLE_OK;
+        };
+
+        Label statusLabel = new Label("●");
+        statusLabel.setStyle(statusStyle);
+        return statusLabel;
+    }
+
+    private Label createAddRow() {
+
+        Label row = new Label(I18n.t("inventory.addNewItem"));
+        row.setAlignment(Pos.CENTER);
+        row.setStyle("""
+            -fx-text-fill: -app-text;
+            -fx-font-size: 20px;
+            -fx-font-weight: bold;
+            -fx-background-color: -app-blue-secondary;
+            -fx-background-radius: 16;
+            -fx-border-width: 1;
+            -fx-border-radius: 16;
+            -fx-border-color: -app-blue-border;
+            -fx-cursor: hand;
+        """);
+
+        row.setMaxWidth(Double.MAX_VALUE);
+        row.setMinHeight(50);
+
+        VBox.setVgrow(row, Priority.ALWAYS);
+
+        row.setOnMouseClicked(e -> createNewItem());
+
+        return row;
+    }
+
+    private void showDialog(String title, Node content, List<Button> actions) {
+        StackPane overlay = new StackPane();
+        overlay.setStyle("""
+                    -fx-background-color: rgba(0,0,0,0.5);
+                """);
+
+        VBox dialog = new VBox(20);
+        dialog.setAlignment(Pos.CENTER);
+        dialog.setMaxWidth(400);
+        dialog.setMaxHeight(300);
+
+        dialog.setStyle("""
+            -fx-background-color: -app-foreground;
+            -fx-padding: 20;
+            -fx-background-radius: 16;
+            -fx-border-width: 2;
+            -fx-border-color: -app-blue-border;
+            -fx-border-radius: 10;
+        """);
+
+        Label titleLabel = new Label(title);
+        titleLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
+
+        HBox buttonBox = new HBox(10);
+        buttonBox.setAlignment(Pos.CENTER);
+
+        buttonBox.getChildren().addAll(actions);
+
+        dialog.getChildren().addAll(titleLabel, content, buttonBox);
+        overlay.getChildren().add(dialog);
+
+        rootStack.getChildren().add(overlay);
+
+        overlay.setOnMouseClicked(e -> {
+            if (e.getTarget() == overlay) {
+                rootStack.getChildren().remove(overlay);
+            }
+        });
+    }
+
+    private void createNewItem() {
+        TextField nameField = new TextField();
+        TextField quantityField = new TextField();
+        TextField minQuantityField = new TextField();
+        TextField costPerUnitField = new TextField();
+        TextField unitField = new TextField();
+
+        HBox content = new HBox(10,
+                new VBox(20,
+                        new Label(I18n.t("common.name")),
+                        new Label(I18n.t("common.quantity")),
+                        new Label(I18n.t("inventory.minimumQuantity")),
+                        new Label(I18n.t("inventory.costPerUnit")),
+                        new Label(I18n.t("common.unit"))),
+                new VBox(10,
+                        nameField,
+                        quantityField,
+                        minQuantityField,
+                        costPerUnitField,
+                        unitField));
+
+        Button save = new Button(I18n.t("common.save"));
+        Button cancel = new Button(I18n.t("common.cancel"));
+
+        save.setMinWidth(40);
+        cancel.setMinWidth(40);
+
+        save.getStyleClass().add("dialog-button");
+        cancel.getStyleClass().add("dialog-button");
+
+        save.setOnAction(e -> {
+            try {
+                InventoryIngredient item = new InventoryIngredient();
+                item.setName(nameField.getText());
+                item.setQuantity(new BigDecimal(quantityField.getText()));
+                item.setMinimalQuantity(new BigDecimal(minQuantityField.getText()));
+                item.setCostPerUnit(new BigDecimal(costPerUnitField.getText()));
+                item.setUnit(unitField.getText());
+
+                allItems.add(item);
+                inventoryService.saveAll(allItems);
+                reloadInventory();
+
+                rootStack.getChildren().removeLast();
+
+                showToast(I18n.t("inventory.newItemCreated"), true);
+            } catch (Exception ex) {
+                showToast(I18n.t("inventory.invalidFieldFormat"), false);
+                return;
+            }
+        });
+
+        cancel.setOnAction(e -> {
+            rootStack.getChildren().removeLast();
+        });
+
+        showDialog(I18n.t("inventory.newItem"), content, List.of(save, cancel));
+    }
+
+    private void showToast(String message, Boolean msgType) {
+        // Display a temporary floating toast style popup
+
+        toastLabel.getStyleClass().add("toast");
+
+        if (!msgType) {
+            toastLabel.setStyle("-fx-border-color: -app-delete;");
+        }
+        else {
+            toastLabel.setStyle("-fx-border-color: -app-add;");
+        }
+
+        toastLabel.setText(message);
+        toastLabel.setOpacity(0);
+        toastLabel.setVisible(true);
+
+        // Push the label to the front of the StackPane
+        toastLabel.toFront();
+
+        // Make the toast fade in
+        FadeTransition fadeIn = new FadeTransition(Duration.millis(200), toastLabel);
+        fadeIn.setFromValue(0);
+        fadeIn.setToValue(1);
+
+        // Show the toast
+        PauseTransition stay = new PauseTransition(Duration.seconds(1.5));
+
+        // Make the toast fade out
+        FadeTransition fadeOut = new FadeTransition(Duration.millis(200), toastLabel);
+        fadeOut.setFromValue(1);
+        fadeOut.setToValue(0);
+
+        // Hide the label again
+        fadeOut.setOnFinished(e -> {
+            toastLabel.setVisible(false);
+            toastLabel.setOpacity(1);
+        });
+
+        // Perform the transition
+        new SequentialTransition(fadeIn, stay, fadeOut).play();
+    }
+
+    private Pattern compilePattern(String rawPattern) {
+        if (rawPattern == null || rawPattern.isBlank()) {
+            return null;
+        }
+
+        try {
+            return Pattern.compile(rawPattern, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+        } catch (PatternSyntaxException e) {
+            showError(I18n.t("inventory.invalidRegex"), e.getDescription());
+            return activeSearchPattern;
+        }
+    }
+
+    private boolean updateQuantityRangeFilter() {
+        BigDecimal from;
+        BigDecimal to;
+
+        try {
+            from = parseOptionalDecimal(quantityFromField.getText());
+            to = parseOptionalDecimal(quantityToField.getText());
+        } catch (NumberFormatException e) {
+            showError(I18n.t("inventory.invalidFieldFormat"), I18n.t("inventory.invalidFieldFormat"));
+            return false;
+        }
+
+        if ((from != null && from.signum() < 0) || (to != null && to.signum() < 0)) {
+            showError(I18n.t("inventory.invalidQuantityRange"), I18n.t("inventory.invalidQuantityRangeMessage"));
+            return false;
+        }
+
+        if (from != null && to != null && from.compareTo(to) > 0) {
+            showError(I18n.t("inventory.invalidQuantityRange"), I18n.t("inventory.invalidQuantityRangeMessage"));
+            return false;
+        }
+
+        quantityFrom = from;
+        quantityTo = to;
+        return true;
+    }
+
+    private BigDecimal parseOptionalDecimal(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        return new BigDecimal(value.trim());
+    }
+
+    private BigDecimal zeroIfNull(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private String formatDecimal(BigDecimal value) {
+        return zeroIfNull(value).stripTrailingZeros().toPlainString();
+    }
+
+    private String safeValue(String value) {
+        return value == null ? "" : value;
+    }
+
+    private void showError(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.showAndWait();
+    }
+
+    private enum SortField {
+        ITEM_ID,
+        NAME,
+        QUANTITY,
+        MINIMAL_QUANTITY,
+        STATUS
+    }
+
+    private enum CurrentFilter {
+        ALL,
+        LOW_STOCK,
+        CRITICAL
+    }
+}

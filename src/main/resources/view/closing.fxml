@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+
+<HBox xmlns:fx="http://javafx.com/fxml"
+      fx:controller="dev.vavateam1.controller.ClosingController"
+      fx:id="rootContainer"
+      spacing="20"
+      maxWidth="Infinity"
+      style="-fx-padding:20; -fx-background-color:-app-background;">
+
+    <!-- MAIN PANEL -->
+    <VBox 
+          spacing="12"
+          prefWidth="500"
+          maxWidth="Infinity"
+          HBox.hgrow="ALWAYS"
+            style="-fx-padding:10; -fx-background-color:-app-background; -fx-background-radius:12;">
+
+        <children>
+            <HBox spacing="16.0" alignment="CENTER_LEFT">
+                <children>
+                    <!-- ACTION BUTTONS -->
+                    <Button fx:id="closingButton"
+                            text="%closing.closing"
+                            onAction="#onClosing"
+                            prefWidth="122.0"
+                            prefHeight="50.0"
+                            styleClass="closing-action-button"/>
+
+                    <Button fx:id="printButton"
+                            text="%common.print"
+                            onAction="#onPrint"
+                            prefWidth="122.0"
+                            prefHeight="50.0"
+                            styleClass="closing-action-button"/>
+
+                    <Button fx:id="cashFloatButton"
+                            text="%closing.cashFloat"
+                            onAction="#onCashFloat"
+                            prefWidth="155.0"
+                            prefHeight="50.0"
+                            wrapText="true"
+                            styleClass="closing-action-button"/>
+
+                    <Button fx:id="withdrawalButton"
+                            text="%closing.withdrawal"
+                            onAction="#onWithdrawal"
+                            prefWidth="122.0"
+                            prefHeight="50.0"
+                            styleClass="closing-action-button"/>
+
+                        <Region HBox.hgrow="ALWAYS"/>
+                    
+                    <!-- TOTAL BUTTONS -->
+                    <HBox spacing="18.0" alignment="CENTER_RIGHT">
+                        <children>
+                            <VBox prefWidth="166.0"
+                                    prefHeight="54.0"
+                                    alignment="CENTER"
+                                    style="-fx-background-color: -app-foreground; -fx-background-radius: 16; -fx-padding: 8 14 8 14;">
+                                <children>
+                                    <Label text="%closing.totalPaid"
+                                            alignment="CENTER"
+                                            style="-fx-text-fill: -app-text; -fx-font-size: 12px;"/>
+                                    <Label fx:id="totalPaidLabel"
+                                            text="306.64"
+                                            alignment="CENTER"
+                                            style="-fx-text-fill: -app-text; -fx-font-size: 25px; -fx-font-weight: bold;"/>
+                                </children>
+                            </VBox>
+
+                            <VBox prefWidth="166.0"
+                                    prefHeight="54.0"
+                                    alignment="CENTER"
+                                    style="-fx-background-color: -app-foreground; -fx-background-radius: 16; -fx-padding: 8 14 8 14;">
+                                <children>
+                                    <Label text="%closing.totalTips"
+                                            alignment="CENTER"
+                                            style="-fx-text-fill: -app-text; -fx-font-size: 12px;"/>
+                                    <Label fx:id="totalTipsLabel"
+                                            text="32.40"
+                                            alignment="CENTER"
+                                            style="-fx-text-fill: -app-text; -fx-font-size: 25px; -fx-font-weight: bold;"/>
+                                </children>
+                            </VBox>
+                        </children>
+                    </HBox>
+                </children>
+            </HBox>
+
+            <!-- SUMMARY TABLE -->
+            <VBox spacing="10.0"
+                    style="-fx-background-color: -app-foreground; -fx-background-radius: 18; -fx-padding: 18 22 18 22;">
+                <children>
+                    <HBox>
+                        <children>
+                            <Label text="%common.total"
+                                    style="-fx-text-fill: -app-text; -fx-font-size: 13px;"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Label fx:id="grandTotalLabel"
+                                    text="306.64"
+                                    style="-fx-text-fill: -app-text; -fx-font-size: 13px;"/>
+                        </children>
+                    </HBox>
+
+                    <HBox>
+                        <children>
+                            <Label text="%closing.cashFloatIndented"
+                                    style="-fx-text-fill: -app-text; -fx-font-size: 13px;"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Label fx:id="cashFloatValueLabel"
+                                    text="100"
+                                    style="-fx-text-fill: -app-text; -fx-font-size: 13px;"/>
+                        </children>
+                    </HBox>
+
+                    <HBox>
+                        <children>
+                            <Label text="%closing.cashIndented"
+                                    style="-fx-text-fill: -app-text; -fx-font-size: 13px;"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Label fx:id="cashValueLabel"
+                                    text="6.64"
+                                    style="-fx-text-fill: -app-text; -fx-font-size: 13px;"/>
+                        </children>
+                    </HBox>
+
+                    <HBox>
+                        <children>
+                            <Label text="%closing.cardIndented"
+                                    style="-fx-text-fill: -app-text; -fx-font-size: 13px;"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Label fx:id="cardValueLabel"
+                                    text="300.00"
+                                    style="-fx-text-fill: -app-text; -fx-font-size: 13px;"/>
+                        </children>
+                    </HBox>
+                </children>
+            </VBox>
+        </children>
+
+    </VBox>
+
+
+</HBox>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+
+<ScrollPane xmlns="http://javafx.com/javafx/25"
+    xmlns:fx="http://javafx.com/fxml/1"
+    fx:controller="dev.vavateam1.controller.TopNavbarZonesController"
+    fitToHeight="true"
+    fitToWidth="false"
+    hbarPolicy="AS_NEEDED"
+    vbarPolicy="NEVER"
+    pannable="true"
+    prefHeight="60.0"
+    minHeight="60.0"
+    maxHeight="60.0"
+    styleClass="top-nav-scroll">
+    <content>
+        <HBox fx:id="zonesContainer"
+            prefHeight="60.0"
+            minHeight="60.0"
+            maxHeight="60.0"
+            styleClass="top-nav">
+
+            <children>
+                <Region HBox.hgrow="ALWAYS" />
+            </children>
+
+            <padding>
+                <Insets top="0.0" right="0.0" bottom="0.0" left="0.0" />
+            </padding>
+        </HBox>
+    </content>
+</ScrollPane>

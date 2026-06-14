@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.*?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml"
+            fx:controller="dev.vavateam1.controller.DashboardController">
+
+    <!-- LEFT SIDEBAR -->
+    <left>
+    <VBox fx:id="sidebar"
+      spacing="10"
+      prefWidth="208"
+      styleClass="sidebar"
+      style="-fx-padding: 20;"
+      fillWidth="true">
+
+    <!-- MENU ITEMS -->
+    <HBox styleClass="sidebar-item"
+          onMouseClicked="#showTableView">
+        <Label text="%nav.tables" styleClass="sidebar-label"/>
+    </HBox>
+
+    <HBox styleClass="sidebar-item"
+          onMouseClicked="#showClosing">
+        <Label text="%nav.closing" styleClass="sidebar-label"/>
+    </HBox>
+
+    <HBox styleClass="sidebar-item"
+          onMouseClicked="#showHistory">
+        <Label text="%nav.history" styleClass="sidebar-label"/>
+    </HBox>
+
+        <HBox fx:id="managerPanelItem"
+          styleClass="sidebar-item"
+          onMouseClicked="#showManager">
+        <Label text="%nav.managerPanel" styleClass="sidebar-label"/>
+    </HBox>
+
+    <!-- SPACER -->
+    <VBox VBox.vgrow="ALWAYS"/>
+
+    <!-- PROFILE -->
+    <VBox alignment="CENTER" spacing="10" styleClass="sidebar-profile">
+        <StackPane styleClass="sidebar-avatar">
+            <Label fx:id="profileInitialsLabel"
+                   text="U"
+                   styleClass="sidebar-avatar-label"/>
+        </StackPane>
+        <Label text="%nav.loggedInAs"
+               styleClass="sidebar-profile-caption"/>
+        <Label fx:id="loggedInRoleLabel"
+               text="%role.waiter"
+               styleClass="sidebar-profile-role"/>
+    </VBox>
+
+    <!-- LOGOUT -->
+    <Button text="%nav.logout"
+            onAction="#logout"
+            maxWidth="1.7976931348623157E308"
+            styleClass="sidebar-logout-button"/>
+
+</VBox>
+</left>
+
+    <!-- TOP BAR -->
+    <top>
+      <VBox fx:id="topSection">
+        <children>
+          <HBox spacing="15"
+                alignment="CENTER_LEFT"
+                prefHeight="56.0"
+                minHeight="56.0"
+                maxHeight="56.0"
+                styleClass="dashboard-top-bar">
+                 <Label text="☰"
+                   onMouseClicked="#toggleSidebar"
+                   styleClass="sidebar-toggle"/>
+            <HBox fx:id="topNavbarContainer"
+                  HBox.hgrow="ALWAYS"
+                  prefHeight="56.0"
+                  minHeight="56.0"
+                  maxHeight="56.0"
+                  alignment="CENTER_LEFT"/>
+            <Region HBox.hgrow="ALWAYS" />
+            <Button fx:id="languageButton"
+                    text="SK"
+                    onAction="#switchLanguage"
+                    styleClass="nav-tab" />
+          </HBox>
+        </children>
+      </VBox>
+    </top>
+
+    <!-- CENTER CONTENT -->
+    <center>
+        <StackPane fx:id="contentArea"
+           alignment="CENTER"
+           style="-fx-background-color: -app-background;">
+        </StackPane>
+    </center>
+
+</BorderPane>

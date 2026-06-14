@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.*?>
+<?import javafx.geometry.Insets?>
+
+<StackPane xmlns:fx="http://javafx.com/fxml"
+           fx:id="contentArea"
+           fx:controller="dev.vavateam1.controller.TablesController"
+           alignment="CENTER"
+           style="-fx-background-color: -app-background;">
+
+    <!-- MAIN PAGE AREA -->
+    <Pane fx:id="tablesPane"
+          prefWidth="800"
+          prefHeight="600"/>
+
+</StackPane>

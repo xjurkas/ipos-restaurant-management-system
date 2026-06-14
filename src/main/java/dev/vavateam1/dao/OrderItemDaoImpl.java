@@ -1,0 +1,286 @@
+package dev.vavateam1.dao;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.time.OffsetDateTime;
+import java.sql.Types;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.inject.Inject;
+
+import dev.vavateam1.data.connection.ConnectionFactory;
+import dev.vavateam1.dto.CreateOrder;
+import dev.vavateam1.model.OrderItem;
+import dev.vavateam1.model.OrderStatus;
+//import dev.vavateam1.util.SqlUtils;
+
+public class OrderItemDaoImpl implements OrderItemDao {
+    private static final Logger log = LoggerFactory.getLogger(OrderItemDaoImpl.class);
+
+    private final ConnectionFactory connectionFactory;
+
+    @Inject
+    public OrderItemDaoImpl(ConnectionFactory connectionFactory) {
+        this.connectionFactory = connectionFactory;
+    }
+
+    private OrderItem mapResultSetToOrderItem(ResultSet rs) throws SQLException {
+        OrderItem orderItem = new OrderItem();
+        orderItem.setId(rs.getInt("id"));
+        orderItem.setMenuItemId(rs.getInt("menu_item_id"));
+        orderItem.setPaymentId(rs.getObject("payment_id", Integer.class));
+        orderItem.setWaiterId(rs.getInt("waiter_id"));
+        orderItem.setTableId(rs.getInt("table_id"));
+        orderItem.setQuantity(rs.getInt("quantity"));
+        orderItem.setDiscount(rs.getBigDecimal("discount"));
+        orderItem.setPrice(rs.getBigDecimal("price"));
+        orderItem.setNote(rs.getString("note"));
+        orderItem.setStatus(OrderStatus.valueOf(rs.getString("status")));
+        orderItem.setCreatedAt(rs.getObject("created_at", OffsetDateTime.class));
+        orderItem.setUpdatedAt(rs.getObject("updated_at", OffsetDateTime.class));
+        return orderItem;
+    }
+
+    @Override
+    public List<OrderItem> findByPayment(int paymentId) {
+        log.info("Fetching order items for payment id: {}", paymentId);
+        String sql = """
+                SELECT oi.id, oi.menu_item_id, mi.name AS menu_item_name, oi.payment_id, oi.waiter_id,
+                        oi.table_id, t.table_number, oi.quantity, oi.discount, oi.price, oi.note,
+                        oi.status, oi.created_at, oi.updated_at
+                FROM order_items oi
+                JOIN menu_items mi ON oi.menu_item_id = mi.id
+                JOIN tables t ON oi.table_id = t.id
+                WHERE oi.payment_id = ?
+                ORDER BY oi.created_at ASC, oi.id ASC
+                """;
+
+        List<OrderItem> orderItems = new ArrayList<>();
+
+        try (Connection conn = connectionFactory.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, paymentId);
+
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                orderItems.add(mapResultSetToOrderItem(rs));
+            }
+            log.info("Fetched {} order items for payment id: {}", orderItems.size(), paymentId);
+            return orderItems;
+        } catch (SQLException e) {
+            log.error("Failed to fetch order items for payment id: {}", paymentId, e);
+            throw new RuntimeException("Failed to fetch order items for payment " + paymentId, e);
+        }
+    }
+
+    @Override
+    public List<OrderItem> getUnpaidOrderItems() {
+        log.info("Fetching all unpaid order items");
+        String sql = """
+                SELECT id, menu_item_id, payment_id, waiter_id, table_id, quantity, discount, price, note,
+                       status, created_at, updated_at
+                FROM order_items
+                WHERE payment_id IS NULL
+                ORDER BY created_at ASC, id ASC
+                """;
+
+        List<OrderItem> orderItems = new ArrayList<>();
+
+        try (Connection conn = connectionFactory.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                orderItems.add(mapResultSetToOrderItem(rs));
+            }
+
+            log.info("Fetched {} unpaid order items", orderItems.size());
+            return orderItems;
+        } catch (SQLException e) {
+            log.error("Failed to fetch unpaid order items", e);
+            throw new RuntimeException("Failed to fetch unpaid order items", e);
+        }
+    }
+
+    @Override
+    public List<OrderItem> getOrderItemsByTableId(int tableId) {
+        log.info("Fetching order items for table id: {}", tableId);
+        String sql = """
+                SELECT oi.id, oi.menu_item_id, mi.name AS menu_item_name, oi.payment_id, oi.waiter_id,
+                       oi.table_id, t.table_number, oi.quantity, oi.discount, oi.price, oi.note,
+                       oi.status, oi.created_at, oi.updated_at
+                FROM order_items oi
+                JOIN menu_items mi ON oi.menu_item_id = mi.id
+                JOIN tables t ON oi.table_id = t.id
+                WHERE oi.table_id = ? AND oi.payment_id IS NULL
+                ORDER BY oi.created_at ASC, oi.id ASC
+                """;
+
+        List<OrderItem> orderItems = new ArrayList<>();
+
+        try (Connection conn = connectionFactory.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, tableId);
+            ResultSet rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                orderItems.add(mapResultSetToOrderItem(rs));
+            }
+
+            log.info("Fetched {} order items for table id: {}", orderItems.size(), tableId);
+            return orderItems;
+        } catch (SQLException e) {
+            log.error("Failed to fetch order items for table id: {}", tableId, e);
+            throw new RuntimeException("Failed to fetch order items for table " + tableId, e);
+        }
+    }
+
+    @Override
+    public boolean hasActiveKitchenItemsByTableId(int tableId) {
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM order_items oi
+                    JOIN menu_items mi ON mi.id = oi.menu_item_id
+                    WHERE oi.table_id = ?
+                      AND oi.payment_id IS NULL
+                      AND mi.to_kitchen = TRUE
+                      AND mi.deleted_at IS NULL
+                      AND oi.status::text IN ('RECEIVED', 'IN_PROGRESS', 'DONE')
+                )
+                """;
+
+        try (Connection conn = connectionFactory.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, tableId);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getBoolean(1);
+                }
+            }
+
+            return false;
+        } catch (SQLException e) {
+            log.error("Failed to check active kitchen items for table id: {}", tableId, e);
+            throw new RuntimeException("Failed to check active kitchen items for table " + tableId, e);
+        }
+    }
+
+    @Override
+    public OrderItem createOrderItem(CreateOrder orderCreateDto) {
+        log.info("Creating order item for menu item id: {}, table id: {}", orderCreateDto.getMenuItemId(), orderCreateDto.getTableId());
+        String sql = """
+                INSERT INTO order_items (menu_item_id, payment_id, waiter_id, table_id, quantity, discount, price, note, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+        try (Connection conn = connectionFactory.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
+
+            stmt.setInt(1, orderCreateDto.getMenuItemId());
+            if (orderCreateDto.getPaymentId() != null) {
+                stmt.setInt(2, orderCreateDto.getPaymentId());
+            } else {
+                stmt.setNull(2, java.sql.Types.INTEGER);
+            }
+            stmt.setInt(3, orderCreateDto.getWaiterId());
+            stmt.setInt(4, orderCreateDto.getTableId());
+            stmt.setInt(5, orderCreateDto.getQuantity());
+            stmt.setBigDecimal(6, orderCreateDto.getDiscount());
+            stmt.setBigDecimal(7, orderCreateDto.getPrice());
+            stmt.setString(8, orderCreateDto.getNote());
+            stmt.setObject(9, orderCreateDto.getStatus().name(), Types.OTHER);
+
+            stmt.executeUpdate();
+            try (ResultSet rs = stmt.getGeneratedKeys()) {
+                if (rs.next()) {
+                    int id = rs.getInt(1);
+                    OrderItem created = findOrderItemById(id, conn);
+                    log.info("Order item created with id: {}", created.getId());
+                    return created;
+                }
+            }
+
+            throw new RuntimeException("Failed to create order item: no generated key returned.");
+        } catch (SQLException e) {
+            log.error("Failed to create order item for menu item id: {}", orderCreateDto.getMenuItemId(), e);
+            throw new RuntimeException("Failed to create order item", e);
+        }
+    }
+
+    private OrderItem findOrderItemById(int id, Connection conn) throws SQLException {
+        String sql = "SELECT * FROM order_items WHERE id = ?";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return mapResultSetToOrderItem(rs);
+                }
+            }
+        }
+
+        throw new RuntimeException("Failed to load created order item " + id);
+    }
+
+    @Override
+    public void updateOrderItem(OrderItem orderItem) {
+        log.info("Updating order item id: {}", orderItem.getId());
+        String sql = """
+                UPDATE order_items
+                SET menu_item_id = ?, payment_id = ?, waiter_id = ?, table_id = ?, quantity = ?, discount = ?, price = ?, note = ?, status = ?, updated_at = NOW()
+                WHERE id = ?
+                """;
+        try (Connection conn = connectionFactory.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, orderItem.getMenuItemId());
+            if (orderItem.getPaymentId() != null) {
+                stmt.setInt(2, orderItem.getPaymentId());
+            } else {
+                stmt.setNull(2, java.sql.Types.INTEGER);
+            }
+            stmt.setInt(3, orderItem.getWaiterId());
+            stmt.setInt(4, orderItem.getTableId());
+            stmt.setInt(5, orderItem.getQuantity());
+            stmt.setBigDecimal(6, orderItem.getDiscount());
+            stmt.setBigDecimal(7, orderItem.getPrice());
+            stmt.setString(8, orderItem.getNote());
+            stmt.setObject(9, orderItem.getStatus().name(), Types.OTHER);
+            stmt.setInt(10, orderItem.getId());
+
+            stmt.executeUpdate();
+            log.info("Order item updated id: {}", orderItem.getId());
+        } catch (SQLException e) {
+            log.error("Failed to update order item id: {}", orderItem.getId(), e);
+            throw new RuntimeException("Failed to update order item " + orderItem.getId(), e);
+        }
+    }
+
+    @Override
+    public void deleteOrderItem(int orderItemId) {
+        log.info("Deleting order item id: {}", orderItemId);
+        String sql = "DELETE FROM order_items WHERE id = ? AND payment_id IS NULL";
+
+        try (Connection conn = connectionFactory.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, orderItemId);
+            stmt.executeUpdate();
+            log.info("Order item deleted id: {}", orderItemId);
+        } catch (SQLException e) {
+            log.error("Failed to delete order item id: {}", orderItemId, e);
+            throw new RuntimeException("Failed to delete order item " + orderItemId, e);
+        }
+    }
+}
